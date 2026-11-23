@@ -1,0 +1,94 @@
+:root {
+  --bg: #fafafa;
+  --card: #fff;
+  --fg: #111;
+  --muted: #777;
+  --line: #e4e4e4;
+  --accent: #111;
+  --accent-fg: #fff;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e0e;
+    --card: #181818;
+    --fg: #eee;
+    --muted: #8a8a8a;
+    --line: #2a2a2a;
+    --accent: #eee;
+    --accent-fg: #111;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 28px 16px 64px; min-height: 100vh; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+
+.box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+}
+.box.drag { border-color: var(--fg); border-style: dashed; }
+textarea {
+  width: 100%;
+  min-height: 72px;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip {
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip button { border: 0; padding: 0 0 0 6px; color: var(--muted); }
+.chips { margin-bottom: 8px; }
+
+button {
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+button.send { margin-left: auto; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+.status { font-size: 13px; color: var(--muted); }
+
+.feed { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.time { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.text { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.item img, .item video { display: block; max-width: 100%; max-height: 360px; border-radius: 8px; }
+.item audio { width: 100%; }
+.file { word-break: break-all; margin-top: 6px; }
+.actions { display: flex; gap: 16px; margin-top: 8px; }
+.actions a, .actions button {
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.actions a:hover, .actions button:hover { color: var(--fg); }
+.muted { color: var(--muted); }
