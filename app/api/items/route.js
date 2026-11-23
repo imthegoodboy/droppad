@@ -28,6 +28,8 @@ export async function GET() {
     })
   );
 
-  items.sort((a, b) => new Date(b.time) - new Date(a.time));
+  // uploadedAt is only second-precise; paths carry a ms timestamp, so prefer that.
+  const ms = (it) => Number(it.url.match(/\/(\d{13})-/)?.[1]) || new Date(it.time).getTime();
+  items.sort((a, b) => ms(b) - ms(a));
   return Response.json(items);
 }
