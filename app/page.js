@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { upload } from '@vercel/blob/client';
+import Stickers, { HeartSticker, MiniHeart } from './stickers';
 
 const EXT = {
   image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp'],
@@ -12,11 +13,26 @@ const kindOf = (name) => {
   const ext = name.split('.').pop().toLowerCase();
   return Object.keys(EXT).find((k) => EXT[k].includes(ext)) || 'file';
 };
-const fmtSize = (n) =>
-  n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+const extLabel = (name) => {
+  const parts = name.split('.');
+  const ext = parts.length > 1 ? parts.pop() : '';
+  return ext && ext.length <= 4 ? ext : 'file';
+};
 const fmtTime = (t) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const safeName = (name) => name.replace(/[^\w.\- ()]/g, '_') || 'file';
+const tone = (s) => `t${[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % 5}`;
+
+const ClipIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+const SendIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 19V5M5 12l7-7 7 7" />
+  </svg>
+);
 
 export default function Home() {
   const [items, setItems] = useState(null);
@@ -26,6 +42,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const picker = useRef(null);
+  const box = useRef(null);
+  const feed = useRef(null);
 
   const load = () =>
     fetch('/api/items', { cache: 'no-store' })
@@ -36,6 +54,13 @@ export default function Home() {
   useEffect(() => {
     load();
   }, []);
+
+  // grow the message box with its text
+  useEffect(() => {
+    const t = box.current;
+    t.style.height = 'auto';
+    t.style.height = `${Math.min(t.scrollHeight, 140)}px`;
+  }, [text]);
 
   const addFiles = (list) => setFiles((f) => [...f, ...Array.from(list)]);
 
@@ -48,12 +73,12 @@ export default function Home() {
           access: 'public',
           handleUploadUrl: '/api/upload',
           multipart: f.size > 20 * 1024 * 1024,
-          onUploadProgress: ({ percentage }) => setStatus(`Uploading ${f.name} ${Math.round(percentage)}%`),
+          onUploadProgress: ({ percentage }) => setStatus(`uploading ${f.name} · ${Math.round(percentage)}%`),
         });
         setFiles((fs) => fs.filter((x) => x !== f));
       }
       if (text.trim()) {
-        setStatus('Sending…');
+        setStatus('sending…');
         await upload(`texts/${uid()}.txt`, new Blob([text], { type: 'text/plain' }), {
           access: 'public',
           handleUploadUrl: '/api/upload',
@@ -62,33 +87,56 @@ export default function Home() {
       }
       setStatus('');
     } catch (e) {
-      setStatus(`Failed: ${e.message}`);
+      setStatus(`oops, failed: ${e.message}`);
     }
     await load();
+    feed.current?.scrollTo({ top: 0, behavior: 'smooth' });
     setBusy(false);
   }
 
   return (
-    <main
+    <div
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
       }}
-      onDragLeave={() => setDrag(false)}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setDrag(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         setDrag(false);
         addFiles(e.dataTransfer.files);
       }}
     >
-      <h1>droppad</h1>
+      <Stickers />
 
-      <div className={`box${drag ? ' drag' : ''}`}>
+      <h1 className="title">
+        droppad <MiniHeart />
+      </h1>
+
+      <div className="feed" ref={feed}>
+        <div style={{ flex: `0 0 ${files.length || status ? 160 : 112}px` }} />
+        {items === null ? (
+          <div className="empty">loading…</div>
+        ) : items.length === 0 ? (
+          <div className="empty">
+            <HeartSticker />
+            <p>nothing here yet, say hi!</p>
+          </div>
+        ) : (
+          items.map((it) => <Message key={it.url} it={it} />)
+        )}
+        <div style={{ flex: '0 0 72px' }} />
+      </div>
+
+      <div className={`composer${drag ? ' drag' : ''}`}>
+        {status && <div className="status">{status}</div>}
         {files.length > 0 && (
-          <div className="row chips">
+          <div className="chips">
             {files.map((f, i) => (
               <span className="chip" key={i}>
-                {f.name}
+                <span>{f.name}</span>
                 <button onClick={() => setFiles((fs) => fs.filter((x) => x !== f))} aria-label="Remove">
                   ×
                 </button>
@@ -96,26 +144,9 @@ export default function Home() {
             ))}
           </div>
         )}
-        <textarea
-          placeholder="Type a message, or drop / paste files…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {
-            if (e.clipboardData.files.length) {
-              e.preventDefault();
-              addFiles(e.clipboardData.files);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <div className="row">
-          <button onClick={() => picker.current.click()} disabled={busy}>
-            Attach
+        <div className="bar">
+          <button className="icon attach" onClick={() => picker.current.click()} disabled={busy} aria-label="Attach">
+            <ClipIcon />
           </button>
           <input
             ref={picker}
@@ -127,49 +158,66 @@ export default function Home() {
               e.target.value = '';
             }}
           />
-          <span className="status">{status}</span>
-          <button className="send" onClick={send} disabled={busy || (!text.trim() && !files.length)}>
-            {busy ? 'Sending…' : 'Send'}
+          <textarea
+            ref={box}
+            rows={1}
+            placeholder="write something cute ♡"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              if (e.clipboardData.files.length) {
+                e.preventDefault();
+                addFiles(e.clipboardData.files);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <button
+            className="icon send"
+            onClick={send}
+            disabled={busy || (!text.trim() && !files.length)}
+            aria-label="Send"
+          >
+            <SendIcon />
           </button>
         </div>
       </div>
-
-      <div className="feed">
-        {items === null ? (
-          <p className="muted">Loading…</p>
-        ) : items.length === 0 ? (
-          <p className="muted">Nothing here yet.</p>
-        ) : (
-          items.map((it) => <Item key={it.url} it={it} />)
-        )}
-      </div>
-    </main>
+    </div>
   );
 }
 
-function Item({ it }) {
+function Message({ it }) {
   const [copied, setCopied] = useState(false);
   const kind = it.kind === 'text' ? 'text' : kindOf(it.name);
 
   return (
-    <div className="item">
-      <div className="time">{fmtTime(it.time)}</div>
-
-      {kind === 'text' && <p className="text">{it.text}</p>}
+    <div className="msg" tabIndex={0}>
+      {kind === 'text' && <div className={`bubble ${tone(it.url)}`}>{it.text}</div>}
       {kind === 'image' && (
-        <a href={it.url} target="_blank" rel="noreferrer">
-          <img src={it.url} alt={it.name} loading="lazy" />
+        <a className="media-link" href={it.url} target="_blank" rel="noreferrer">
+          <img className="media" src={it.url} alt={it.name} loading="lazy" />
         </a>
       )}
-      {kind === 'video' && <video src={it.url} controls preload="metadata" />}
-      {kind === 'audio' && <audio src={it.url} controls preload="none" />}
-      {kind !== 'text' && (
-        <div className="file">
-          {it.name} <span className="muted">· {fmtSize(it.size)}</span>
+      {kind === 'video' && <video className="media" src={it.url} controls preload="metadata" />}
+      {kind === 'audio' && (
+        <div className={`bubble ${tone(it.url)}`}>
+          <audio src={it.url} controls preload="none" />
         </div>
       )}
+      {kind === 'file' && (
+        <a className={`bubble file ${tone(it.url)}`} href={it.url} target="_blank" rel="noreferrer">
+          <span className="ext">{extLabel(it.name)}</span>
+          <span className="fname">{it.name}</span>
+        </a>
+      )}
 
-      <div className="actions">
+      <div className="meta">
+        <span className="when">{fmtTime(it.time)}</span>
         {kind === 'text' ? (
           <button
             onClick={() => {
@@ -178,14 +226,14 @@ function Item({ it }) {
               setTimeout(() => setCopied(false), 1500);
             }}
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'copied ♡' : 'copy'}
           </button>
         ) : (
           <a href={it.url} target="_blank" rel="noreferrer">
-            View
+            view
           </a>
         )}
-        <a href={it.downloadUrl}>Download</a>
+        <a href={it.downloadUrl}>download</a>
       </div>
     </div>
   );
