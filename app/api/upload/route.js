@@ -9,7 +9,7 @@ export async function POST(request) {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
-        if (!/^(files|texts)\//.test(pathname)) throw new Error('Invalid path');
+        if (!pathname.startsWith('files/')) throw new Error('Invalid path');
         return { addRandomSuffix: false, maximumSizeInBytes: 500 * 1024 * 1024 };
       },
     });

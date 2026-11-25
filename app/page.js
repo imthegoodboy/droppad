@@ -45,15 +45,45 @@ export default function Home() {
   const box = useRef(null);
   const feed = useRef(null);
 
-  const load = () =>
-    fetch('/api/items', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then(setItems)
-      .catch(() => setItems([]));
+  const seen = useRef('');
 
+  // fetch the list (served from Vercel's cache unless something new was saved);
+  // `fresh` skips the cache right after we send something ourselves
+  const load = async (fresh) => {
+    try {
+      const r = await fetch(fresh ? `/api/items?t=${Date.now()}` : '/api/items', { cache: 'no-store' });
+      if (r.ok) {
+        const list = await r.json();
+        const sig = `${list.length}:${list[0]?.id}`;
+        if (sig !== seen.current) {
+          seen.current = sig;
+          setItems(list);
+        }
+      }
+    } catch {}
+    setItems((prev) => prev ?? []);
+  };
+
+  // live: check for new messages every few seconds while the tab is open
   useEffect(() => {
     load();
+    const tick = () => document.visibilityState === 'visible' && load();
+    const timer = setInterval(tick, 5000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
+
+  const save = async (body) => {
+    const r = await fetch('/api/items', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'could not save');
+  };
 
   // grow the message box with its text
   useEffect(() => {
@@ -62,34 +92,36 @@ export default function Home() {
     t.style.height = `${Math.min(t.scrollHeight, 140)}px`;
   }, [text]);
 
-  const addFiles = (list) => setFiles((f) => [...f, ...Array.from(list)]);
+  // copy the FileList right away: the browser empties it once the event ends
+  const addFiles = (list) => {
+    const picked = Array.from(list);
+    if (picked.length) setFiles((f) => [...f, ...picked]);
+  };
 
   async function send() {
     if (busy || (!text.trim() && !files.length)) return;
     setBusy(true);
     try {
       for (const f of files) {
-        await upload(`files/${uid()}/${safeName(f.name)}`, f, {
+        const blob = await upload(`files/${uid()}/${safeName(f.name)}`, f, {
           access: 'public',
           handleUploadUrl: '/api/upload',
-          multipart: f.size > 20 * 1024 * 1024,
+          multipart: f.size > 100 * 1024 * 1024,
           onUploadProgress: ({ percentage }) => setStatus(`uploading ${f.name} · ${Math.round(percentage)}%`),
         });
+        await save({ url: blob.url });
         setFiles((fs) => fs.filter((x) => x !== f));
       }
       if (text.trim()) {
         setStatus('sending…');
-        await upload(`texts/${uid()}.txt`, new Blob([text], { type: 'text/plain' }), {
-          access: 'public',
-          handleUploadUrl: '/api/upload',
-        });
+        await save({ text });
         setText('');
       }
       setStatus('');
     } catch (e) {
       setStatus(`oops, failed: ${e.message}`);
     }
-    await load();
+    await load(true);
     feed.current?.scrollTo({ top: 0, behavior: 'smooth' });
     setBusy(false);
   }
@@ -125,7 +157,7 @@ export default function Home() {
             <p>nothing here yet, say hi!</p>
           </div>
         ) : (
-          items.map((it) => <Message key={it.url} it={it} />)
+          items.map((it) => <Message key={it.id} it={it} />)
         )}
         <div style={{ flex: '0 0 72px' }} />
       </div>
@@ -194,10 +226,18 @@ export default function Home() {
 function Message({ it }) {
   const [copied, setCopied] = useState(false);
   const kind = it.kind === 'text' ? 'text' : kindOf(it.name);
+  const t = tone(it.id);
+  const downloadText = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([it.text], { type: 'text/plain;charset=utf-8' }));
+    a.download = 'message.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
     <div className="msg" tabIndex={0}>
-      {kind === 'text' && <div className={`bubble ${tone(it.url)}`}>{it.text}</div>}
+      {kind === 'text' && <div className={`bubble ${t}`}>{it.text}</div>}
       {kind === 'image' && (
         <a className="media-link" href={it.url} target="_blank" rel="noreferrer">
           <img className="media" src={it.url} alt={it.name} loading="lazy" />
@@ -205,12 +245,12 @@ function Message({ it }) {
       )}
       {kind === 'video' && <video className="media" src={it.url} controls preload="metadata" />}
       {kind === 'audio' && (
-        <div className={`bubble ${tone(it.url)}`}>
+        <div className={`bubble ${t}`}>
           <audio src={it.url} controls preload="none" />
         </div>
       )}
       {kind === 'file' && (
-        <a className={`bubble file ${tone(it.url)}`} href={it.url} target="_blank" rel="noreferrer">
+        <a className={`bubble file ${t}`} href={it.url} target="_blank" rel="noreferrer">
           <span className="ext">{extLabel(it.name)}</span>
           <span className="fname">{it.name}</span>
         </a>
@@ -233,7 +273,7 @@ function Message({ it }) {
             view
           </a>
         )}
-        <a href={it.downloadUrl}>download</a>
+        {kind === 'text' ? <button onClick={downloadText}>download</button> : <a href={it.downloadUrl}>download</a>}
       </div>
     </div>
   );
